@@ -28,6 +28,7 @@ sub Start
     $handle={};
     ::Watch($handle, PlayingSong => \&Changed);
 }
+
 sub Stop
 {
     ::UnWatch($handle,'PlayingSong');
@@ -63,7 +64,7 @@ sub Changed
 }
 
 sub FingerPrint
-{	my $mID = shift;
+{   my $mID = shift;
     my $file = Songs::GetFullFilename($mID);
     
     WriteFingerPrint($mID, CreateFingerPrint($file)) unless GetFingerPrint($file);
@@ -72,22 +73,22 @@ sub FingerPrint
 }
 
 sub GetFingerPrint
-{	my $file = shift;
-	my ($h) = FileTag::Read($file, 0, 'embedded_lyrics');
-	return $h->{embedded_lyrics} if $h and $h->{embedded_lyrics};
+{   my $file = shift;
+    my ($h) = FileTag::Read($file, 0, 'embedded_lyrics');
+    return $h->{embedded_lyrics} if $h and $h->{embedded_lyrics};
 }
 
 sub WriteFingerPrint
-{	my ($mID,$val) = @_;
-	FileTag::Write($mID, [ embedded_lyrics => $val ], sub
-	 {	my ($syserr ,$details) = FileTag::Error_Message(@_);
-		return ::Retry_Dialog($syserr, "Error writing fingerprint", details => $details, ID => $mID);
-	 });
+{   my ($mID,$val) = @_;
+    FileTag::Write($mID, [ embedded_lyrics => $val ], sub
+    {my ($syserr ,$details) = FileTag::Error_Message(@_);
+        return ::Retry_Dialog($syserr, "Error writing fingerprint", details => $details, ID => $mID);
+    });
     return $val;
 }
 
 sub CreateFingerPrint
-{	my $file = shift;
+{   my $file = shift;
     $file =~ s/'/\'\\'\'/g;
     my $result = `echoprint-codegen '$file' 1 10 2>&1`;
    
