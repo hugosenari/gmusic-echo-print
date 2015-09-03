@@ -13,10 +13,10 @@ package GMB::Plugin::ECHOPRINT;
 use warnings;
 use constant
 {
-    OPT	=> 'PLUGIN_ECHOPRINT_',
+    OPT	=> 'PLUGIN_ECHOPRINT_'
 };
 
-use IO::CaptureOutput qw( qxx);
+use IPC::Open2;
  
 my $Log=Gtk2::ListStore->new('Glib::String');
 
@@ -37,7 +37,7 @@ sub Log
 {
     my $text=$_[0];
     $Log->set( $Log->prepend,0, localtime().'  '.$text );
-    warn "$text\n";# if $::debug;
+    warn "$text\n";
     if (my $iter=$Log->iter_nth_child(undef,50)) { $Log->remove($iter); }
 }
 
@@ -54,7 +54,7 @@ sub Changed
     $musicID = $::SongID;
 
     eval {
-        SetFingerPrint();
+        FingerPrint($musicID);
     } or do {
         Log("$@");
         return 0;
@@ -62,34 +62,43 @@ sub Changed
     return 1;
 }
 
-sub SetFingerPrint
-{
-    my $echoprint = FileTag::GetLyrics($musicID) or 0;
-    Log("old echoprint $echoprint");
+sub FingerPrint
+{	my $mID = shift;
+    my $file = Songs::GetFullFilename($mID);
     
-    unless ($echoprint)
-    {
-        $echoprint = GetFingerPrint();
-
-        Log("new echoprint $echoprint");
-        FileTag::WriteLyrics($musicID, $echoprint) if $echoprint;
-    }
+    WriteFingerPrint($mID, CreateFingerPrint($file)) unless GetFingerPrint($file);
+    
     return 1;
 }
 
 sub GetFingerPrint
-{
-    my $fullfilename = Songs::GetFullFilename($musicID);
-    my ( $stdout , $stderr , $success ) = qxx( 'echoprint-codegen' , $fullfilename, 1, 10 );
-    if ($stdout =~ /"code"/) {
-        $stdout =~ s/\R//g;
-        $stdout =~ s/^.*"code"\w*:\w*"([^"]+)".*/$1/gi;
-        return $stdout;
+{	my $file = shift;
+	my ($h) = FileTag::Read($file, 0, 'embedded_lyrics');
+	return $h->{embedded_lyrics} if $h and $h->{embedded_lyrics};
+}
+
+sub WriteFingerPrint
+{	my ($mID,$val) = @_;
+	FileTag::Write($mID, [ embedded_lyrics => $val ], sub
+	 {	my ($syserr ,$details) = FileTag::Error_Message(@_);
+		return ::Retry_Dialog($syserr, "Error writing fingerprint", details => $details, ID => $mID);
+	 });
+    return $val;
+}
+
+sub CreateFingerPrint
+{	my $file = shift;
+    $file =~ s/'/\'\\'\'/g;
+    my $result = `echoprint-codegen '$file' 1 10 2>&1`;
+   
+    $result =~ s/\R//g;
+
+    if ($result =~ /"code"/) {
+        $result =~ s/^.*"code"\w*:\w*"([^"]+)".*/$1/gi;
+        return $result;
     }
 
-    $stderr = $stdout unless $stderr;
-    $stderr =~ s/\R//g;
-    $stderr =~ s/^.*"error"\w*:\w*"([^"]+)".*/$1/gi;
+    $result =~ s/^.*"error"\w*:\w*"([^"]+)".*/$1/gi;
 
-    die "Cannot get fingerprint, Error: $stderr";
+    die "Cannot get fingerprint, Error: $result";
 }
